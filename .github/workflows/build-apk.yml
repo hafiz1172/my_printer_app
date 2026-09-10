@@ -23,11 +23,13 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
+          flutter-version: '3.22.2'
           channel: 'stable'
 
-      - name: Install Project Dependencies
-        run: flutter pub get
+      - name: Clean and Update Project Files
+        run: |
+          flutter clean
+          flutter pub get
 
       - name: Build Android APK (Release)
         run: flutter build apk --release --no-tree-shake-icons
