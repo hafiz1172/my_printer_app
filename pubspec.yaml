@@ -1,19 +1,19 @@
-name: my_printer_app
-description: "A thermal printer driver and utility app."
+name: thermal_printer_utility
+description: "A RawBT-like thermal printer driver and utility app"
 publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.2.0 <4.0.0'
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
-  print_bluetooth_thermal: ^1.1.1
-  esc_pos_utils_plus: ^2.0.3
-  image: ^4.1.3
-  permission_handler: ^11.3.1
-  fluttertoast: ^8.2.4
+  image: ^4.1.7               # Image rasterization, dithering & Urdu bitmap processing
+  shelf: ^1.4.1               # Lightweight local HTTP server (Port 40213)
+  shelf_router: ^1.1.4        # API routing for local POS integration
+  qr_flutter: ^4.1.0          # QR code generation
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:
