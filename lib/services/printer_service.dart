@@ -11,7 +11,6 @@ enum ConnectionType { bluetooth, wifi }
 class PrinterService {
   Socket? _wifiSocket;
   ConnectionType activeType = ConnectionType.bluetooth;
-  bool _isBtConnected = false;
 
   Future<bool> isConnected() async {
     if (activeType == ConnectionType.bluetooth) {
@@ -21,7 +20,6 @@ class PrinterService {
     }
   }
 
-  // --- Bluetooth Methods ---
   Future<List<BluetoothInfo>> getBondedDevices() async {
     return await PrintBluetoothThermal.pairedBluetooths;
   }
@@ -29,12 +27,10 @@ class PrinterService {
   Future<bool> connectBluetooth(String macAddress) async {
     disconnect();
     final bool result = await PrintBluetoothThermal.connect(macPrinterAddress: macAddress);
-    _isBtConnected = result;
     activeType = ConnectionType.bluetooth;
     return result;
   }
 
-  // --- Wi-Fi / Network Socket Methods (Port 9100) ---
   Future<bool> connectWifi(String host, int port) async {
     disconnect();
     try {
@@ -49,13 +45,11 @@ class PrinterService {
   void disconnect() {
     if (activeType == ConnectionType.bluetooth) {
       PrintBluetoothThermal.disconnect;
-      _isBtConnected = false;
     }
     _wifiSocket?.destroy();
     _wifiSocket = null;
   }
 
-  // --- Send Raw Bytes to Printer ---
   Future<void> sendBytes(List<int> bytes) async {
     if (activeType == ConnectionType.bluetooth) {
       await PrintBluetoothThermal.writeBytes(bytes);
@@ -65,7 +59,6 @@ class PrinterService {
     }
   }
 
-  // --- ESC/POS Receipt Generator ---
   Future<List<int>> generateSampleReceipt({
     required PaperSize paperSize,
     required String title,
@@ -92,7 +85,7 @@ class PrinterService {
 
     for (var item in items) {
       bytes += generator.row([
-        PosColumn(text: item['name'], width: 8),
+        PosColumn(text: item['name'].toString(), width: 8),
         PosColumn(
           text: item['price'].toString(),
           width: 4,
@@ -122,7 +115,6 @@ class PrinterService {
     return bytes;
   }
 
-  // --- Urdu & Custom Text to Image Converter (ESC/POS Bitmap) ---
   Future<List<int>> generateUrduReceiptImage(String urduText, PaperSize paperSize) async {
     final profile = await CapabilityProfile.load();
     final generator = Generator(paperSize, profile);
