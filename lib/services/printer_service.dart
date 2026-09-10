@@ -2,43 +2,43 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:image/image.dart' as img;
 
 enum ConnectionType { bluetooth, wifi }
 
 class PrinterService {
-  BluetoothConnection? _bluetoothConnection;
   Socket? _wifiSocket;
   ConnectionType activeType = ConnectionType.bluetooth;
+  bool _isBtConnected = false;
 
-  bool get isConnected =>
-      (_bluetoothConnection != null && _bluetoothConnection!.isConnected) ||
-      (_wifiSocket != null);
-
-  // --- Bluetooth Methods ---
-  Future<List<BluetoothDevice>> getBondedDevices() async {
-    return await FlutterBluetoothSerial.instance.getBondedDevices();
+  Future<bool> isConnected() async {
+    if (activeType == ConnectionType.bluetooth) {
+      return await PrintBluetoothThermal.connectionStatus;
+    } else {
+      return _wifiSocket != null;
+    }
   }
 
-  Future<bool> connectBluetooth(String address) async {
+  // --- Bluetooth Methods ---
+  Future<List<BluetoothInfo>> getBondedDevices() async {
+    return await PrintBluetoothThermal.pairedBluetooths;
+  }
+
+  Future<bool> connectBluetooth(String macAddress) async {
     disconnect();
-    try {
-      _bluetoothConnection = await BluetoothConnection.toAddress(address);
-      activeType = ConnectionType.bluetooth;
-      return true;
-    } catch (e) {
-      return false;
-    }
+    final bool result = await PrintBluetoothThermal.connect(macPrinterAddress: macAddress);
+    _isBtConnected = result;
+    activeType = ConnectionType.bluetooth;
+    return result;
   }
 
   // --- Wi-Fi / Network Socket Methods (Port 9100) ---
   Future<bool> connectWifi(String host, int port) async {
     disconnect();
     try {
-      _wifiSocket = await Socket.connect(host, port,
-          timeout: const Duration(seconds: 5));
+      _wifiSocket = await Socket.connect(host, port, timeout: const Duration(seconds: 5));
       activeType = ConnectionType.wifi;
       return true;
     } catch (e) {
@@ -47,19 +47,18 @@ class PrinterService {
   }
 
   void disconnect() {
-    _bluetoothConnection?.dispose();
-    _bluetoothConnection = null;
+    if (activeType == ConnectionType.bluetooth) {
+      PrintBluetoothThermal.disconnect;
+      _isBtConnected = false;
+    }
     _wifiSocket?.destroy();
     _wifiSocket = null;
   }
 
   // --- Send Raw Bytes to Printer ---
   Future<void> sendBytes(List<int> bytes) async {
-    if (!isConnected) throw Exception("No printer connected.");
-
-    if (activeType == ConnectionType.bluetooth && _bluetoothConnection != null) {
-      _bluetoothConnection!.output.add(Uint8List.fromList(bytes));
-      await _bluetoothConnection!.output.allSent;
+    if (activeType == ConnectionType.bluetooth) {
+      await PrintBluetoothThermal.writeBytes(bytes);
     } else if (activeType == ConnectionType.wifi && _wifiSocket != null) {
       _wifiSocket!.add(bytes);
       await _wifiSocket!.flush();
@@ -79,41 +78,44 @@ class PrinterService {
     List<int> bytes = [];
 
     bytes += generator.reset();
-    bytes += generator.text(shopName,
-        styles: const PosStyles(
-            align: PosAlign.center,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
-            bold: true));
-    bytes += generator.text(title,
-        styles: const PosStyles(align: PosAlign.center));
+    bytes += generator.text(
+      shopName,
+      styles: const PosStyles(
+        align: PosAlign.center,
+        height: PosTextSize.size2,
+        width: PosTextSize.size2,
+        bold: true,
+      ),
+    );
+    bytes += generator.text(title, styles: const PosStyles(align: PosAlign.center));
     bytes += generator.hr();
 
     for (var item in items) {
       bytes += generator.row([
         PosColumn(text: item['name'], width: 8),
         PosColumn(
-            text: item['price'].toString(),
-            width: 4,
-            styles: const PosStyles(align: PosAlign.right)),
+          text: item['price'].toString(),
+          width: 4,
+          styles: const PosStyles(align: PosAlign.right),
+        ),
       ]);
     }
 
     bytes += generator.hr();
     bytes += generator.row([
       PosColumn(
-          text: 'TOTAL',
-          width: 6,
-          styles: const PosStyles(bold: true, height: PosTextSize.size2)),
+        text: 'TOTAL',
+        width: 6,
+        styles: const PosStyles(bold: true, height: PosTextSize.size2),
+      ),
       PosColumn(
-          text: total.toStringAsFixed(2),
-          width: 6,
-          styles: const PosStyles(
-              bold: true, align: PosAlign.right, height: PosTextSize.size2)),
+        text: total.toStringAsFixed(2),
+        width: 6,
+        styles: const PosStyles(bold: true, align: PosAlign.right, height: PosTextSize.size2),
+      ),
     ]);
     bytes += generator.feed(1);
-    bytes += generator.qrcode('https://github.com',
-        size: QRSize.size4, align: PosAlign.center);
+    bytes += generator.qrcode('https://github.com', size: QRSize.size4, align: PosAlign.center);
     bytes += generator.feed(2);
     bytes += generator.cut();
 
@@ -121,15 +123,13 @@ class PrinterService {
   }
 
   // --- Urdu & Custom Text to Image Converter (ESC/POS Bitmap) ---
-  Future<List<int>> generateUrduReceiptImage(
-      String urduText, PaperSize paperSize) async {
+  Future<List<int>> generateUrduReceiptImage(String urduText, PaperSize paperSize) async {
     final profile = await CapabilityProfile.load();
     final generator = Generator(paperSize, profile);
 
-    // Render text to canvas
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    const double width = 384.0; // 58mm default width in dots
+    const double width = 384.0;
     final paint = Paint()..color = Colors.white;
     canvas.drawRect(const Rect.fromLTWH(0, 0, width, 150), paint);
 
@@ -153,12 +153,10 @@ class PrinterService {
 
     final picture = recorder.endRecording();
     final uiImage = await picture.toImage(width.toInt(), 150);
-    final byteData =
-        await uiImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.rawRgba);
 
     if (byteData == null) return [];
 
-    // Convert to Image package format
     final image = img.Image.fromBytes(
       width: width.toInt(),
       height: 150,
