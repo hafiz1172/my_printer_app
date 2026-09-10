@@ -23,12 +23,12 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.2'
           channel: 'stable'
+          cache: true
 
-      - name: Clean and Update Project Files
+      - name: Disable Analytics & Get Packages
         run: |
-          flutter clean
+          flutter config --no-analytics
           flutter pub get
 
       - name: Build Android APK (Release)
