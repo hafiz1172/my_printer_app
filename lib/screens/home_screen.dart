@@ -191,7 +191,6 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Connection Type Selector
             SegmentedButton<ConnectionType>(
               segments: const [
                 ButtonSegment(
@@ -211,8 +210,6 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
             const SizedBox(height: 16),
-
-            // Connection Inputs
             if (_selectedMode == ConnectionType.bluetooth) ...[
               Card(
                 color: const Color(0xFF1E1E1E),
@@ -281,8 +278,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
             const SizedBox(height: 12),
-
-            // Connect & Disconnect Buttons
             Row(
               children: [
                 Expanded(
@@ -306,8 +301,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             const SizedBox(height: 24),
-
-            // Paper Size Settings
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -330,8 +323,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             const Divider(color: Colors.white24, height: 32),
-
-            // Print Operations
             const Text("Quick Actions",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
@@ -345,8 +336,6 @@ class _HomeScreenState extends State<HomeScreen> {
               label: const Text("Print Full Standard Invoice"),
             ),
             const SizedBox(height: 16),
-
-            // Urdu / RTL Bitmap Print Section
             Card(
               color: const Color(0xFF1E1E1E),
               child: Padding(
