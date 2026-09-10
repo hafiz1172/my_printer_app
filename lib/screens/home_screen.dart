@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -14,9 +14,10 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final PrinterService _printerService = PrinterService();
-  List<BluetoothDevice> _devices = [];
-  BluetoothDevice? _selectedDevice;
+  List<BluetoothInfo> _devices = [];
+  BluetoothInfo? _selectedDevice;
   bool _isLoading = false;
+  bool _isConnected = false;
 
   final TextEditingController _ipController =
       TextEditingController(text: "192.168.1.100");
@@ -48,7 +49,12 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isLoading = true);
     try {
       final devices = await _printerService.getBondedDevices();
-      setState(() => _devices = devices);
+      setState(() {
+        _devices = devices;
+        if (_devices.isNotEmpty && _selectedDevice == null) {
+          _selectedDevice = _devices.first;
+        }
+      });
     } catch (e) {
       _showToast("Bluetooth load error: $e");
     } finally {
@@ -58,6 +64,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showToast(String msg) {
     Fluttertoast.showToast(msg: msg, backgroundColor: Colors.black87);
+  }
+
+  Future<void> _checkStatus() async {
+    final status = await _printerService.isConnected();
+    setState(() {
+      _isConnected = status;
+    });
   }
 
   Future<void> _connect() async {
@@ -70,23 +83,30 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() => _isLoading = false);
         return;
       }
-      success = await _printerService.connectBluetooth(_selectedDevice!.address);
+      success = await _printerService.connectBluetooth(_selectedDevice!.macAdress);
     } else {
       final port = int.tryParse(_portController.text) ?? 9100;
-      success =
-          await _printerService.connectWifi(_ipController.text.trim(), port);
+      success = await _printerService.connectWifi(_ipController.text.trim(), port);
     }
 
+    await _checkStatus();
     setState(() => _isLoading = false);
-    _showToast(
-        success ? "Connected Successfully!" : "Failed to connect printer");
+    _showToast(success ? "Connected Successfully!" : "Failed to connect printer");
+  }
+
+  Future<void> _disconnect() async {
+    _printerService.disconnect();
+    await _checkStatus();
+    _showToast("Disconnected");
   }
 
   Future<void> _printReceipt() async {
-    if (!_printerService.isConnected) {
+    final status = await _printerService.isConnected();
+    if (!status) {
       _showToast("Printer not connected");
       return;
     }
+
     setState(() => _isLoading = true);
     try {
       final bytes = await _printerService.generateSampleReceipt(
@@ -110,10 +130,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _printUrdu() async {
-    if (!_printerService.isConnected) {
+    final status = await _printerService.isConnected();
+    if (!status) {
       _showToast("Printer not connected");
       return;
     }
+
     setState(() => _isLoading = true);
     try {
       final bytes = await _printerService.generateUrduReceiptImage(
@@ -145,17 +167,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   CircleAvatar(
                     radius: 6,
-                    backgroundColor: _printerService.isConnected
-                        ? Colors.greenAccent
-                        : Colors.redAccent,
+                    backgroundColor:
+                        _isConnected ? Colors.greenAccent : Colors.redAccent,
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    _printerService.isConnected ? "ONLINE" : "OFFLINE",
+                    _isConnected ? "ONLINE" : "OFFLINE",
                     style: TextStyle(
-                      color: _printerService.isConnected
-                          ? Colors.greenAccent
-                          : Colors.redAccent,
+                      color:
+                          _isConnected ? Colors.greenAccent : Colors.redAccent,
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
@@ -200,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.all(12.0),
                   child: Column(
                     children: [
-                      DropdownButtonFormField<BluetoothDevice>(
+                      DropdownButtonFormField<BluetoothInfo>(
                         dropdownColor: const Color(0xFF2C2C2C),
                         value: _selectedDevice,
                         hint: const Text("Select Paired Device",
@@ -209,11 +229,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         items: _devices.map((d) {
                           return DropdownMenuItem(
                             value: d,
-                            child: Text("${d.name ?? 'Unknown'} (${d.address})",
+                            child: Text("${d.name} (${d.macAdress})",
                                 style: const TextStyle(color: Colors.white)),
                           );
                         }).toList(),
-                        onChanged: (val) => setState(() => _selectedDevice = val),
+                        onChanged: (val) =>
+                            setState(() => _selectedDevice = val),
                       ),
                       const SizedBox(height: 8),
                       TextButton.icon(
@@ -272,15 +293,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     onPressed: _isLoading ? null : _connect,
                     icon: const Icon(Icons.link),
-                    label: Text(_isLoading ? "Connecting..." : "Connect Printer"),
+                    label:
+                        Text(_isLoading ? "Connecting..." : "Connect Printer"),
                   ),
                 ),
                 const SizedBox(width: 8),
                 IconButton.filledTonal(
-                  onPressed: () {
-                    _printerService.disconnect();
-                    setState(() {});
-                  },
+                  onPressed: _disconnect,
                   icon: const Icon(Icons.link_off),
                   tooltip: "Disconnect",
                 )
@@ -293,7 +312,8 @@ class _HomeScreenState extends State<HomeScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text("Thermal Paper Size:",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 DropdownButton<PaperSize>(
                   value: _paperSize,
                   dropdownColor: const Color(0xFF2C2C2C),
